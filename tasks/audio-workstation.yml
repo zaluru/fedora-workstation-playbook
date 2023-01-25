@@ -1,0 +1,43 @@
+---
+#- name: Install Cadance for audio routing
+- name: Create the audio group
+  group:
+    name: audio
+    state: present
+
+- name: Add user to the audio group
+  user:
+    name: "{{ username }}"
+    groups: audio
+    append: yes
+
+- name: Setup Yabridge for windows plugins
+  block:
+    - name: Enable copr repo patrickl/yabridge-stable
+      community.general.copr:
+        host: copr.fedorainfracloud.org
+        state: enabled
+        name: patrickl/yabridge-stable
+    - name: Install Yabridge
+      dnf:
+        name: yabridge
+        state: latest
+        #TODO add common vst paths and wine https://github.com/brendaningram/linux-audio-setup-scripts/blob/main/fedora/37/install-audio.sh
+
+- name: Setup DAW's
+  block:
+    - name: Install Ardour
+      dnf:
+        name: ardour7
+        state: latest
+    - name: Setup Reaper
+      block:
+        - name: Check if reaper is already installed
+
+        - name: Download REAPER
+          ansible.builtin.unarchive:
+            src: "reaper.tar.xz http://reaper.fm/files/{{ reaper_version.split('.')[0] }}/reaper{{ version | replace('.', '') }}_linux_{{ ansible_architecture }}.tar.xz"
+            dest: "/tmp/REAPER/"
+            remote_src: yes
+    - name: Install REAPER
+    - name: Install Waveform

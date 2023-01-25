@@ -1,0 +1,102 @@
+---
+- name: Import RPM Fusion Free gpg key
+  ansible.builtin.rpm_key:
+    state: present
+    key: "https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-free-fedora-2020"
+    fingerprint: E9A4 91A3 DE24 7814 E7E0 67EA E06F 8ECD D651 FF2E
+  become: true
+- name: Import RPM Fusion Nonfree gpg key
+  ansible.builtin.rpm_key:
+    state: present
+    key: "https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-nonfree-fedora-2020"
+    fingerprint: 79BD B88F 9BBF 7391 0FD4 095B 6A2A F961 9484 3C65
+  become: true
+- name: Enable the RPM Fusion Free repository
+  dnf:
+    name: "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-{{ansible_distribution_major_version}}.noarch.rpm"
+    state: present
+  become: true
+  when: ansible_distribution == 'Fedora'
+- name: Enable the RPM Fusion Nonfree repository
+  dnf:
+    name: "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{ansible_distribution_major_version}}.noarch.rpm"
+    state: present
+  become: true
+  when: ansible_distribution == 'Fedora'
+
+- name: Install dnf packages
+  dnf:
+    name: "{{ dnf_base_packages }}"
+    state: latest
+  become: yes
+  tags:
+    - dnf
+
+- name: Setup rust
+  environment:
+    "{{ rust_env }}"
+  block:
+    - name: Check if cargo is installed
+      command: command -v cargo >/dev/null 2>&1
+      register: cargo_exists
+      ignore_errors: yes
+      changed_when: False
+
+    - name: Download rustup
+      when: cargo_exists is failed
+      get_url:
+        url: https://sh.rustup.rs
+        dest: /tmp/sh.rustup.rs
+        mode: '0755'
+        force: 'yes'
+
+    - name: Install rust/cargo
+      when: cargo_exists is failed
+      shell: /tmp/sh.rustup.rs -y --no-modify-path
+
+    - name: Install rust packages
+      community.general.cargo:
+        name: "{{ cargo_installed_packages }}"
+        state: latest
+  tags:
+    - rust
+
+#- name: install pipx
+#  pip:
+#    name: pipx
+#    state: latest
+#    extra_args: --user
+
+- name: Install pipx packages
+  community.general.pipx:
+    name: "{{ item }}"
+    state: install
+  loop:
+    "{{ pipx_installed_packages }}"
+
+- name: Install pipx packages with deps
+  community.general.pipx:
+    name: "{{ item }}"
+    install_deps: yes
+    # TODO latest runs both install and upgrade, and upgrade does not accept the arguemnt --with-deps for some reason
+    state: install
+  loop:
+    "{{ pipx_installed_packages_with_deps }}"
+
+- name: Setup Cockpit
+  block:
+    - name: Install Cockpit
+      dnf:
+        name: cockpit
+        state: latest
+    - name: Install Cockpit virtual machines UI
+      dnf:
+        name: cockpit-machines
+        state: latest
+      when: setup_cockpit_vm_ui
+    - name: Enable Cockpit
+      systemd:
+        name: cockpit.socket
+        enabled: yes
+  become: true
+  when: setup_cockpit

@@ -1,0 +1,55 @@
+---
+- name: Find latest releases
+  uri:
+    url: https://api.github.com/repos/twpayne/chezmoi/releases/latest
+    return_content: true
+  register: chezmoi_release_output
+
+- name: Set version
+  set_fact:
+    chezmoi_version: "{{ chezmoi_release_output.json.tag_name }}"
+
+- name: Check if chezmoi is already installed
+  command: command -v chezmoi >/dev/null 2>&1
+  register: chezmoi_exists
+  ignore_errors: yes
+  changed_when: false
+
+- name: Determin the installed version of chezmoi
+  command: chezmoi --version
+  register: chezmoi_version_output
+  ignore_errors: yes
+  changed_when: false
+
+- name: Determine the latest version of chezmoi and other variables
+  set_fact:
+    chezmoi_install: "{{ chezmoi_version_output.rc == 2 or not(chezmoi_version in chezmoi_version_output.stdout) }}"
+    chezmoi_version_filtered: "{{ chezmoi_version | regex_replace('^v', '') }}"
+
+- name: Install chezmoi
+  dnf:
+    #name: "https://github.com/twpayne/chezmoi/releases/download/{{ chezmoi_version }}/chezmoi-{{ chezmoi_version_filtered }}-{{ chezmoi_redhat_architectures[ansible_architecture] }}.rpm"
+    name: "https://github.com/twpayne/chezmoi/releases/download/{{ chezmoi_version }}/chezmoi-{{ chezmoi_version_filtered }}-x86_64.rpm"
+    state: present
+    disable_gpg_check: yes  # GPG check fails for some reason.
+  #when: chezmoi_install and ansible_facts['os_family'] == 'RedHat'
+  become: yes
+  when: chezmoi_exists.rc == 1
+
+#TODO set a path to wher the repo can be located
+- name: check if chezmoi repo is already initialized
+  file:
+    path: "{{ ansible_env.HOME }}/.local/share/chezmoi"
+  register: chezmoi_initialized
+  ignore_errors: yes
+
+- name: Initialize chezmoi repo
+  expect:
+    command: "chezmoi init --apply --verbose --ssh {{ dotfiles_repo }}"
+    responses:
+      (?i)Are you sure you want to continue connecting (yes/no/[fingerprint])?: "yes"
+  changed_when: false
+  # I assume that if chezmoi was found there is already an initialized repo
+  environment:
+    GIT_SSH_COMMAND: "ssh -i ~{{ username }}/.ssh/{{ dotfiles_ssh_key_directory }}/{{ dotfiles_ssh_key }}"
+  when: chezmoi_initialized is failed

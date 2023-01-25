@@ -1,0 +1,245 @@
+---
+- name: Install Codecs
+  #https://docs.fedoraproject.org/en-US/quick-docs/assembly_installing-plugins-for-playing-movies-and-music/
+  package:
+    state: present
+    name: "{{ dnf_codecs_packages }}"
+  become: yes
+  tags: codecs
+- name: Install desktop packages
+  dnf:
+    name: "{{ dnf_desktop_packages }}"
+    state: latest
+  become: true
+- name: Add the flathub flatpak repository remote to the user installation
+  community.general.flatpak_remote:
+    name: flathub
+    state: present
+    flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+    method: user
+
+- name: Update flatpaks
+  shell:
+    cmd: flatpak update --noninteractive --user
+  changed_when: False
+  tags:
+    - flatpak
+    - update
+
+- name: Install flatpak packages
+  community.general.flatpak:
+    name: "{{ flatpak_installed_packages }}"
+    state: present
+    method: user
+  tags:
+    - flatpak
+
+#- name: Install from github
+#  block:
+#    - name: Get latest verion of WebCord
+#      community.general.github_release:
+#        user: SpacingBat3
+#        repo: WebCord
+#        action: latest_release
+#      register: webcord_version
+#    - name: Install WebCord
+#      dnf:
+#        name: 'https://github.com/SpacingBat3/WebCord/releases/download/v3.10.0/webcord-{{ webcord_version }}.{{ ansible_architecture }}.rpm'
+#        state: present
+- name: Install xorg desktop packages
+  dnf:
+    name: "{{ dnf_desktop_xorg_packages }}"
+    state: latest
+  become: true
+  when: configure_xorg
+- name: Install wayland desktop packages
+  dnf:
+    name: "{{ dnf_desktop_wayland_packages }}"
+    state: latest
+  become: true
+  when: configure_wayland
+- name: Setup river
+  block:
+    - name: Enable dnf sway module
+      dnf:
+        name: '@sway'
+        state: present
+      become: true
+    - name: "Enable copr repo sway-sig/sway-desktop, alebastr/sway-testing and alebastr/river"
+      community.general.copr:
+        name: "{{ item }}"
+        state: enabled
+      loop:
+        - "@sway-sig/sway-desktop"
+        - alebastr/sway-testing
+        - alebastr/river
+      become: true
+    - name: Install river
+      dnf:
+        name: river
+        state: latest
+      become: true
+    - name: Add river-run script to /usr/local/bin
+      copy:
+        src: "files/desktop/river/river-run"
+        dest: /usr/local/bin/river-run
+        mode: 0755
+      become: true
+    - name: Add river desktop file to wayland-sessions
+      copy:
+        src: "files/desktop/river/river.desktop"
+        dest: /usr/share/wayland-sessions/river.desktop
+        mode: 0644
+      become: true
+  when: desktop_river
+
+
+- name: Setup LeftWM
+  block:
+# TODO switch to copr when they fix the problem with the package.
+#    - name: "Enable copr repo atim/leftwm"
+#      community.general.copr:
+#        name: "atim/leftwm"
+#        state: enabled
+#      become: true
+#    - name: Install LeftWM
+#      dnf:
+#        name: leftwm
+#        state: latest
+    - name: Install LeftWM through cargo
+      community.general.cargo:
+        name: "leftwm"
+        state: latest
+      environment:
+        "{{ rust_env }}"
+    - name: Add LeftWM desktop file to xsessions
+      copy:
+        content: |
+          [Desktop Entry]
+          Encoding=UTF-8
+          Name=LeftWM
+          Comment=A window manager for the adventurer
+          Exec=/usr/local/bin/start-leftwm
+          Type=Application
+          DesktopNames=LeftWM
+        dest: /usr/share/xsessions/leftwm.desktop
+        mode: 0644
+      become: true
+    - name: Add start-leftwm script to /usr/local/bin
+      copy:
+        content: |
+          #!/usr/bin/sh
+          XDG_SESSION_DESKTOP=leftwm startx leftwm
+        dest: /usr/local/bin/start-leftwm
+        mode: 0755
+      become: true
+  when: desktop_leftwm
+
+- name: Setup xmoand
+  block:
+    - name: Install xmonad
+      dnf:
+        name: xmonad-core
+        state: latest
+      become: true
+    - name: Add xmonad desktop file to xsessions
+      copy:
+        content: |
+          [Desktop Entry]
+          Encoding=UTF-8
+          Name=xmonad
+          Comment=Dynamically tiling X11 window manager that is written and configured in Haskell
+          Exec=/usr/local/bin/start-xmonad
+          Type=Application
+          DesktopNames=xmonad
+        dest: /usr/share/xsessions/xmonad.desktop
+        mode: 0644
+      become: true
+    - name: Add start-xmonad script to /usr/local/bin
+      copy:
+        content: |
+          #!/usr/bin/sh
+          XDG_SESSION_DESKTOP=xmonad startx xmonad
+        dest: /usr/local/bin/start-xmonad
+        mode: 0755
+      become: true
+  when: desktop_xmonad
+
+# TODO Setup other window managers
+#- name: Install sway
+#  when: desktop_sway
+#- name: Install dwm
+#  when: desktop_dwm
+- name: Install a status bar
+  block:
+    - name: Install yambar
+      dnf:
+        name: yambar
+        state: latest
+      become: true
+      when: statusbar_yambar
+
+- name: Install a greeter - TUIGreet
+  block:
+    - name: Enable copr repo alebastr/sway-extras
+      community.general.copr:
+        host: copr.fedorainfracloud.org
+        state: enabled
+        name: alebastr/sway-extras
+      become: true
+      # TUI greet is not able to create files saving the last user and session
+      # its a problem with selinux permissions
+      # from what i found in sealert it looks like this may fix it
+      #
+      # sudo ausearch -c 'tokio-runtime-w' --raw | audit2allow -M my-tokioruntimew
+      # sudo semodule -X 300 -i my-tokioruntimew.pp
+      #
+      # I found out that I'm able to export thoes new modules with
+      # sudo semanage module -E
+      # this creates four files in $PWD
+      # my-tokioruntimew.pp mytokioruntimew.te my-tuigreet.pp my-tuigreet.te
+      # it seams that i will be able to set them easly on the other pc's
+      # the .pe files are compiled .te files from what i understand, so I only need the .te files
+      # TODO contribute this to the alebastr/sway-extras repo
+      # TODO add to ansible
+      # https://relativkreativ.at/articles/how-to-compile-a-selinux-policy-package
+    - name: Install TUIGreet
+      dnf:
+        name: greetd-tuigreet
+        state: latest
+      become: true
+    - name: Disable service getty@tty2
+      systemd:
+        name: getty@tty2.service
+        enabled: no
+      become: true
+    - name: Copy greetd config
+      copy:
+        content: "{{ greetd_config }}"
+        dest: /etc/greetd/config.toml
+        mode: 0644
+      become: true
+    - name: Enable greetd service
+      systemd:
+        name: greetd.service
+        enabled: yes
+      become: true
+    - name: check graphical target
+      command: "systemctl get-default"
+      changed_when: false
+      register: systemdefault
+    - name: set default to graphical target
+      command: "systemctl set-default graphical.target"
+      when: "'graphical' not in systemdefault.stdout"
+      become: true
+# TODO
+#- name: Configure firefox
+#  import_role:
+#    name: staticdev.firefox
+#- name: Install a screen locker
+#  block:
+#    # TODO Screen locks
+#    - name: Install Swaylock
+#      when: lockscreen_swayidle
+#    - name: Install waylock
+#      when: lockscreen_waylock

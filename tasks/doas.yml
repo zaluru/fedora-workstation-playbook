@@ -1,0 +1,7 @@
+---
+- name: Copy doas configuration into place.
+  copy:
+    content: "{{ doas_custom_config }}"
+    dest: /etc/doas.conf
+    mode: 0440
+  become: true

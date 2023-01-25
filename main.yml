@@ -1,0 +1,76 @@
+---
+# TODO when managing a local device like my laptop i have to install openssh-server on the target device
+- hosts: all
+
+  # running init to create new user and install base packages
+  #
+  # ANSIBLE_GATHERING=explicit ansible-playbook -K --tags "init" main.yml
+  #
+  # have to set ANSIBLE_GATHERING to explicit, otherwise ansible runs Gathering Facts the init tag checks
+  # if there are any users already created, so if thoes users are not found it switches to root.
+
+  # Running on the same machine
+  # ansible-playbook --limit localhost main.yml
+  vars_files:
+    - default.config.yml
+
+  pre_tasks:
+    - name: Include playbook configuration.
+      include_vars: "{{ item }}"
+      with_fileglob:
+        - "{{ playbook_dir }}/config.yml"
+      tags: ['always']
+
+
+  roles:
+    - role: andrewrothstein.starship
+      tags: ['starship']
+      when: install_starship_prompt
+
+  tasks:
+    - import_tasks: tasks/init.yml
+      tags: ['init', 'never']
+
+    - import_tasks: tasks/dnf-update.yml
+      tags: ['dnf-update', 'update']
+
+    - import_tasks: tasks/doas.yml
+      when: configure_doas
+      tags: ['doas']
+
+    - import_tasks: tasks/sudo.yml
+      when: configure_sudoers
+      tags: ['sudoers']
+
+    - import_tasks: tasks/dotfiles.yml
+      when: configure_dotfiles
+      tags: ['dotfiles']
+
+    - import_tasks: tasks/software-install.yml
+      tags: ['software-install']
+
+    - import_tasks: tasks/fonts.yml
+      tags: ['fonts']
+
+    - import_tasks: tasks/setup-desktop.yml
+      when: setup_desktop
+      tags: ['setup_desktop']
+
+    - import_tasks: tasks/latex.yml
+      when: setup_pandoc_latex
+      tags: ['setup_pandoc']
+
+    - import_tasks: tasks/gns3.yml
+      when: setup_gns3_server or setup_gns3_gui
+      tags: ['gns3']
+
+    - import_tasks: tasks/radium-compilation.yml
+      tags: ['radium', 'never']
+
+    - block:
+        - name: Run configured post-provision ansible task files.
+          include_tasks: "{{ outer_item }}"
+          loop_control:
+            loop_var: outer_item
+          with_fileglob: "{{ post_provision_tasks|default(omit) }}"
+      tags: ['post']

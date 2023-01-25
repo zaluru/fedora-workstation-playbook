@@ -1,0 +1,24 @@
+---
+- name: Install latex and pandoc
+  dnf:
+    name:
+      - texlive-scheme-full
+      - pandoc
+    state: latest
+    become: true
+- name: create pandoc templates directory
+  file:
+    path: "{{ ansible_env.HOME }}/.local/share/pandoc/templates"
+    state: directory
+- name: Get latest eisvogel latex template relase version
+  github_release:
+    user: Wandmalfarbe
+    repo: pandoc-latex-template
+    action: latest_release
+  register: latest
+- name: Install eisvogel latex template
+  ansible.builtin.unarchive:
+    src: "https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/{{ latest }}/Eisvogel.tar.gz"
+    dest: "{{ ansible_env.HOME }}/.local/share/pandoc/templates/"
+    include: eisvogel.latex
+    remote_src: yes

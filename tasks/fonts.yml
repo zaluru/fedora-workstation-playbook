@@ -1,0 +1,20 @@
+---
+- name: Ensure fonts directory exists
+  file:
+    path: "{{ ansible_env.HOME }}/.local/share/fonts"
+    state: directory
+
+- name: Get latest relase version
+  github_release:
+    user: ryanoasis
+    repo: nerd-fonts
+    action: latest_release
+  register: nerd_fonts_latest
+
+- name: install nerd fonts
+  include_tasks: nerd-fonts.yml
+  vars:
+    latest: "{{ nerd_fonts_latest }}"
+    name: "{{ item }}"
+  loop: "{{ nerd_fonts }}"
+

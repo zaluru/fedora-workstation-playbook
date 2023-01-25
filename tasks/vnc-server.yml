@@ -1,0 +1,5 @@
+---
+- name: Install a vnc server
+  dnf:
+    name: wayvnc
+    state: latest

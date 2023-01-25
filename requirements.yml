@@ -1,0 +1,5 @@
+---
+roles:
+  - name: andrewrothstein.starship
+collections:
+  - name: community.general

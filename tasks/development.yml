@@ -1,0 +1,21 @@
+---
+- name: Setup Doom Emacs
+  block:
+    - name: Install Doom Emacs dependencies
+      dnf:
+        name:
+          - emacs
+          - git
+          - ripgrep
+          - fd-find
+# TODO move to nix asdf-vm
+- name: Setup asdf
+  environment:
+    "{{ asdf_env }}"
+  block:
+    - name: Install asdf
+      shell: |
+        git clone https://github.com/asdf-vm/asdf.git {{ ansible_env.ASDF_DATA_DIR }} --branch v0.10.2
+    - name: Install the asdf direnv plugin
+      shell: |
+        asdf plugin-add direnv

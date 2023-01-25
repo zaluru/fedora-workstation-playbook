@@ -1,0 +1,19 @@
+---
+- name: "Check if {{ name }} is already installed"
+  file:
+    path: "{{ ansible_env.HOME }}/.local/share/fonts/nerdfonts/{{ name }}"
+  register: nerd_font_exists
+  ignore_errors: yes
+- name: "Install {{ name }}"
+  block:
+    - name: "Create {{ name }} directory"
+      file:
+        path: "{{ ansible_env.HOME }}/.local/share/fonts/nerdfonts/{{ name }}"
+        state: directory
+
+    - name: "Download {{ name }} font."
+      ansible.builtin.unarchive:
+        src: "https://github.com/ryanoasis/nerd-fonts/releases/download/{{ latest.tag }}/{{ name }}.zip"
+        dest: "{{ ansible_env.HOME }}/.local/share/fonts/nerdfonts/{{ name }}"
+        remote_src: yes
+  when: nerd_font_exists is failed

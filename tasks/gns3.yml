@@ -1,0 +1,56 @@
+---
+- name: Setup gns3 server
+  block:
+    - name: Install dependencies
+      dnf:
+        name:
+          - "@virtualization"
+          - bridge-utils
+          - unzip
+          - python3-devel
+        state: latest
+      become: true
+    - name: Create directory that will store all files asociated with GNS3
+      file:
+        path: "{{ gns3_directory }}"
+        state: directory
+
+    - name: Create directory that will store the gns3-server image
+      file:
+        path: "{{ gns3_directory }}/server"
+        state: directory
+    - name: Download GNS3 server qemu image
+      unarchive:
+        remote_src: yes
+        src: "https://github.com/GNS3/gns3-gui/releases/download/v{{ gns3_version }}/GNS3.VM.KVM.{{ gns3_version }}.zip"
+        #    dest: "{{ libvirt_pool_dir }}/gns3/{{ gns3_version }}" # TODO If I would like to put the image in a system directory for vm images
+        dest: "{{ gns3_directory }}/server"
+        exclude:
+          - "start-gns3vm.sh"
+
+    - name: make sure ~/.local/bin exists
+      file:
+        path: "{{ ansible_env.HOME }}/.local/bin"
+        state: directory
+    - name: Add a gns3server script to $PATH (modified start-gns3vm.sh)
+      copy:
+        content: "{{ gns3_server_script }}"
+        dest: "{{ ansible_env.HOME }}/.local/bin/gns3server"
+        mode: 0755
+  when: setup_gns3_server
+
+- name: Setup gns3 gui
+  block:
+    - name: Install gns3-gui through pipx
+      community.general.pipx:
+        # TODO check if running it with --include-deps changes something
+        name: "gns3-gui=={{ gns3_version }}"
+        state: install
+        force: true # if we specify a diffrent version and there is one already installed, the new one will override it
+    - name: Inject pyqt5 to gns3-gui
+      community.general.pipx:
+        name: "gns3-gui"
+        state: inject
+        inject_packages: pyqt5
+        force: true
+  when: setup_gns3_gui
